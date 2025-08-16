@@ -1,6 +1,6 @@
 [package]
 name = "vibesearch"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
 license = "MIT"
 description = "vibesearch is a AI-powered modern iterator searching library written in Rust."
@@ -20,7 +20,7 @@ sha256 = ["dep:ring", "dep:base64"]
 openai_dive = "1.2"
 serde_json = "1"
 paste = "1"
-rand = { version = "0.9", features = ["os_rng"] }
+rand = "0.9"
 ring = { version = "0.17", optional = true }
 base64 = { version = "0.22", optional = true }
 serde = { version = "1", optional = true }

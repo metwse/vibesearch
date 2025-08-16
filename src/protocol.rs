@@ -7,7 +7,7 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
 };
 
-#[cfg(feature = "sha256")]
+#[cfg(any(feature = "sha256", feature = "serde"))]
 use base64::prelude::*;
 #[cfg(feature = "sha256")]
 use ring::digest;

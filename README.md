@@ -14,3 +14,33 @@ efficient, and near-instant `.iter().position()`? That's so last century. 🙄
 
 While the entire concept is fundamentally unreliable, at least you won't get a
 segmentation fault. You're welcome. 🦀 🔥
+
+## Usage
+### 1. Add to your `Cargo.toml`:
+```toml
+[dependencies]
+vibesearch = "0.1"
+tokio = { version = "1", features = ["full"] }
+```
+
+### 2. Set your OpenAI API key:
+```sh
+export OPENAI_API_KEY="sk-..."
+```
+
+### 3. Find it:
+```rs
+use vibesearch::{VibeSearchClient, VibeSearch};
+
+#[tokio::main]
+async fn main() {
+    let client = VibeSearchClient::new_from_env();
+    let data = [5, 2, 8, 2, 9];
+
+    // Find the indices of '2'
+    let result = data.iter().vibe_find(&client, &2).await;
+
+    // Expected output: [1, 3]
+    println!("{:?}", result);
+}
+```

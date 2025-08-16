@@ -33,7 +33,7 @@ impl VibeSearchClient {
     /// response to extract the indices of the found elements.
     ///
     /// [`protocol`]: crate::protocol
-    pub async fn prompt(&self, promt: String) -> Result<Vec<u64>, Error> {
+    pub async fn prompt(&self, prompt: String) -> Result<Vec<u64>, Error> {
         let parameters = ChatCompletionParametersBuilder::default()
             .model(FlagshipModel::Gpt4O.to_string())
             .messages(vec![
@@ -49,7 +49,7 @@ impl VibeSearchClient {
                     name: None,
                 },
                 ChatMessage::User {
-                    content: ChatMessageContent::Text(promt),
+                    content: ChatMessageContent::Text(prompt),
                     name: None,
                 },
             ])
