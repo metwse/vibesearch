@@ -44,3 +44,35 @@ async fn main() {
     println!("{:?}", result);
 }
 ```
+
+## Advanced Usage
+
+### Configuration
+You can configure the client with custom settings:
+
+```rs
+use vibesearch::{VibeSearchClient, VibeSearchConfig};
+
+let config = VibeSearchConfig::new()
+    .with_model("gpt-4".to_string())
+    .with_temperature(0.7)
+    .with_max_tokens(100)
+    .with_caching(true);
+
+let client = VibeSearchClient::new_from_env_with_config(config);
+```
+
+### Batch Searching
+Find multiple elements at once:
+
+```rs
+use vibesearch::{VibeSearchClient, VibeBatchSearch};
+
+let client = VibeSearchClient::new_from_env();
+let data = [1, 2, 3, 4, 5, 2, 3];
+let elements = vec![2, 3];
+
+let results = data.iter().vibe_find_batch(&client, elements).await;
+// results[0] contains indices of '2': [1, 5]
+// results[1] contains indices of '3': [2, 6]
+```
