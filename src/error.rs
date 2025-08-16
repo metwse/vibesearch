@@ -4,7 +4,9 @@ use openai_dive::v1::{
     error::APIError,
     resources::chat::{ChatCompletionParametersBuilderError, JsonSchemaBuilderError},
 };
+use serde_json::error::Error as SerdeJsonError;
 
+/// `vibesearch` error types.
 #[derive(Debug)]
 pub enum Error {
     API(APIError),
@@ -12,6 +14,7 @@ pub enum Error {
     JsonSchemaBuilder(JsonSchemaBuilderError),
     #[cfg(feature = "serde")]
     Encode(EncodeError),
+    SerdeJson(SerdeJsonError),
 }
 
 impl std::fmt::Display for Error {
@@ -24,6 +27,7 @@ impl std::fmt::Display for Error {
             Self::JsonSchemaBuilder(error) => write!(f, "json schema builder error: {}", error),
             #[cfg(feature = "serde")]
             Self::Encode(error) => write!(f, "encode error: {}", error),
+            Self::SerdeJson(error) => write!(f, "serde json error: {}", error),
         }
     }
 }
@@ -47,10 +51,9 @@ macro_rules! err_impl_from {
 err_impl_from!(
     ChatCompletionParametersBuilder,
     JsonSchemaBuilder,
-    API
+    API,
+    SerdeJson
 );
 
 #[cfg(feature = "serde")]
-err_impl_from!(
-    Encode
-);
+err_impl_from!(Encode);

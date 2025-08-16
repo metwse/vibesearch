@@ -26,7 +26,23 @@ use openai_dive::v1::api::Client;
 
 pub use error::Error;
 
-// Finds positions of element with some time complexity.
+/// Manages the connection and interaction with the OpenAI API for VibeSearch.
+///
+/// Encapsulates the logic for sending structured search prompts to an AI model
+/// and parsing the results back into a usable format. It is the main entry
+/// point for using the library.
+///
+/// # Examples
+///
+/// ```no_run
+/// use vibesearch::VibeSearchClient;
+///
+/// // Create a client from an environment variable (`OPENAI_API_KEY`)
+/// let client = VibeSearchClient::new_from_env();
+///
+/// // Or create it with a specific API key
+/// let client_with_key = VibeSearchClient::new("YOUR_OPENAI_API_KEY".to_string());
+/// ```
 pub struct VibeSearchClient {
     openai_client: Client,
 }

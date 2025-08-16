@@ -8,14 +8,14 @@ use std::{
 };
 
 #[cfg(feature = "sha256")]
-use ring::digest;
-#[cfg(feature = "sha256")]
 use base64::prelude::*;
+#[cfg(feature = "sha256")]
+use ring::digest;
 
 #[cfg(feature = "serde")]
-use serde::Serialize;
-#[cfg(feature = "serde")]
 use crate::Error;
+#[cfg(feature = "serde")]
+use serde::Serialize;
 
 fn random_base36(len: usize) -> String {
     let mut res = String::with_capacity(len);
@@ -64,7 +64,7 @@ pub trait Sha256PromptFormatter<'a> {
 }
 
 /// A trait for iterators whose items can be serialized into a search prompt
-/// using the `serde::Serialize` trait.
+/// using the [`serde::Serialize`] trait.
 #[cfg(feature = "serde")]
 pub trait SerdePromptFormatter<I> {
     fn to_prompt(&mut self, searching_for: I) -> Result<String, Error>;
