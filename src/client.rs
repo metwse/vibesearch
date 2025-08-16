@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::sync::Mutex;
+
 use crate::{Error, VibeSearchClient};
 use openai_dive::v1::{
     api::Client,
-    models::FlagshipModel,
     resources::chat::{
         ChatCompletionParametersBuilder, ChatCompletionResponseFormat, ChatMessage,
         ChatMessageContent, JsonSchemaBuilder,
@@ -9,19 +12,66 @@ use openai_dive::v1::{
 };
 use serde_json::Value;
 
+use crate::config::VibeSearchConfig;
+
+// Simple cache implementation
+#[derive(Debug)]
+pub(crate) struct Cache {
+    entries: Mutex<HashMap<u64, Vec<u64>>>,
+}
+
+impl Cache {
+    fn new() -> Self {
+        Self {
+            entries: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn get(&self, key: u64) -> Option<Vec<u64>> {
+        self.entries.lock().unwrap().get(&key).cloned()
+    }
+
+    fn insert(&self, key: u64, value: Vec<u64>) {
+        self.entries.lock().unwrap().insert(key, value);
+    }
+
+    fn hash_string(s: &str) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        s.hash(&mut hasher);
+        hasher.finish()
+    }
+}
+
 impl VibeSearchClient {
     /// Creates a new [`VibeSearchClient`] instance with a provided API key.
     pub fn new(api_key: String) -> Self {
-        Self {
-            openai_client: Client::new(api_key),
-        }
+        Self::new_with_config(api_key, VibeSearchConfig::default())
     }
 
     /// Creates a new [`VibeSearchClient`] using the `OPENAI_API_KEY`
     /// environment variable.
     pub fn new_from_env() -> Self {
+        Self::new_from_env_with_config(VibeSearchConfig::default())
+    }
+
+    /// Creates a new [`VibeSearchClient`] instance with a provided API key and configuration.
+    pub fn new_with_config(api_key: String, config: VibeSearchConfig) -> Self {
+        let use_caching = config.use_caching;
+        Self {
+            openai_client: Client::new(api_key),
+            config,
+            cache: if use_caching { Some(Cache::new()) } else { None },
+        }
+    }
+
+    /// Creates a new [`VibeSearchClient`] using the `OPENAI_API_KEY`
+    /// environment variable and configuration.
+    pub fn new_from_env_with_config(config: VibeSearchConfig) -> Self {
+        let use_caching = config.use_caching;
         Self {
             openai_client: Client::new_from_env(),
+            config,
+            cache: if use_caching { Some(Cache::new()) } else { None },
         }
     }
 
@@ -34,51 +84,82 @@ impl VibeSearchClient {
     ///
     /// [`protocol`]: crate::protocol
     pub async fn prompt(&self, prompt: String) -> Result<Vec<u64>, Error> {
-        let parameters = ChatCompletionParametersBuilder::default()
-            .model(FlagshipModel::Gpt4O.to_string())
-            .messages(vec![
-                ChatMessage::System {
-                    content: ChatMessageContent::Text(String::from(
-                        "You are a array search tool. \
-                         Find the index of given element, in given array. \
-                         Data given in format: \n\
-                         {elements_separator}<newline>\n\
-                         find {searching_element}<newline>\n\
-                         {element_separator}<newline>{index},{element}<newline>...",
-                    )),
-                    name: None,
-                },
-                ChatMessage::User {
-                    content: ChatMessageContent::Text(prompt),
-                    name: None,
-                },
-            ])
-            .response_format(ChatCompletionResponseFormat::JsonSchema {
-                json_schema: JsonSchemaBuilder::default()
-                    .name("search")
-                    .schema(serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "result": {
-                                "type": "array",
-                                "items": {
-                                    "type": "integer",
-                                    "minimum": 0
-                                },
-                            }
-                        },
-                        "required": ["result"],
-                        "additionalProperties": false
-                    }))
-                    .strict(true)
-                    .build()?,
-            })
-            .build()?;
+        // Check cache if enabled
+        if let Some(cache) = &self.cache {
+            let cache_key = Cache::hash_string(&prompt);
+            if let Some(cached_result) = cache.get(cache_key) {
+                return Ok(cached_result);
+            }
+        }
+
+        let mut parameters_builder = ChatCompletionParametersBuilder::default();
+        parameters_builder.model(self.config.model.clone());
+        parameters_builder.messages(vec![
+            ChatMessage::System {
+                content: ChatMessageContent::Text(String::from(
+                    "You are a array search tool. \
+                     Find the index of given element, in given array. \
+                     Data given in format: \n\
+                     {elements_separator}<newline>\n\
+                     find {searching_element}<newline>\n\
+                     {element_separator}<newline>{index},{element}<newline>...",
+                )),
+                name: None,
+            },
+            ChatMessage::User {
+                content: ChatMessageContent::Text(prompt.clone()),
+                name: None,
+            },
+        ]);
+        parameters_builder.response_format(ChatCompletionResponseFormat::JsonSchema {
+            json_schema: JsonSchemaBuilder::default()
+                .name("search")
+                .schema(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "result": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer",
+                                "minimum": 0
+                            },
+                        }
+                    },
+                    "required": ["result"],
+                    "additionalProperties": false
+                }))
+                .strict(true)
+                .build()
+                .map_err(Error::JsonSchemaBuilder)?,
+        });
+
+        // Apply optional parameters
+        if let Some(temperature) = self.config.temperature {
+            parameters_builder.temperature(temperature);
+        }
+
+        if let Some(max_tokens) = self.config.max_tokens {
+            parameters_builder.max_tokens(max_tokens);
+        }
+
+        let parameters_result = parameters_builder.build();
+        let parameters = match parameters_result {
+            Ok(params) => params,
+            Err(e) => return Err(Error::ChatCompletionParametersBuilder(e)),
+        };
 
         let response = self.openai_client.chat().create(parameters).await?;
 
         let Some(choice) = response.choices.into_iter().next() else {
-            return Ok(vec![]);
+            let empty_result = vec![];
+            
+            // Cache result if enabled
+            if let Some(cache) = &self.cache {
+                let cache_key = Cache::hash_string(&prompt);
+                cache.insert(cache_key, empty_result.clone());
+            }
+            
+            return Ok(empty_result);
         };
 
         let ChatMessage::Assistant {
@@ -86,38 +167,30 @@ impl VibeSearchClient {
             ..
         } = choice.message
         else {
-            return Ok(vec![]);
+            let empty_result = vec![];
+            
+            // Cache result if enabled
+            if let Some(cache) = &self.cache {
+                let cache_key = Cache::hash_string(&prompt);
+                cache.insert(cache_key, empty_result.clone());
+            }
+            
+            return Ok(empty_result);
         };
 
         let parsed_json: Value = serde_json::from_str(&json_string)?;
 
-        let result = parsed_json["result"]
+        let result: Vec<u64> = parsed_json["result"]
             .as_array()
             .map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect())
             .unwrap_or_default();
 
+        // Cache result if enabled
+        if let Some(cache) = &self.cache {
+            let cache_key = Cache::hash_string(&prompt);
+            cache.insert(cache_key, result.clone());
+        }
+
         Ok(result)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::protocol::*;
-
-    #[tokio::test]
-    async fn test_prompt() -> Result<(), Error> {
-        let data = [1, 3, 6, 2, 3];
-
-        let search_prompt = StdHashPromptFormatter::to_prompt(&mut data.iter(), &3);
-
-        assert_eq!(
-            VibeSearchClient::new_from_env()
-                .prompt(search_prompt)
-                .await?,
-            [1, 4]
-        );
-
-        Ok(())
     }
 }

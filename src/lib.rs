@@ -12,6 +12,9 @@
 //!   strategies (Display, Hash, SHA-256, Serde)
 //! - This allows it to process everything from simple text to complex, custom
 //!   data structures.
+//! - Configurable: Customize the AI model, temperature, and other parameters
+//! - Caching: Optionally cache results to avoid repeated API calls
+//! - Batch Operations: Search for multiple elements in a single operation
 //!
 //! ## Usage
 //! First, add `vibesearch` to your `Cargo.toml` and enable the features you
@@ -46,12 +49,45 @@
 //!     assert_eq!(indices_hash, [3]);
 //! }
 //! ```
+//!
+//! ## Advanced Usage
+//!
+//! ### Configuration
+//! ```rust,no_run
+//! use vibesearch::{VibeSearchClient, VibeSearchConfig};
+//!
+//! let config = VibeSearchConfig::new()
+//!     .with_model("gpt-4".to_string())
+//!     .with_temperature(0.7)
+//!     .with_max_tokens(100)
+//!     .with_caching(true);
+//!
+//! let client = VibeSearchClient::new_from_env_with_config(config);
+//! ```
+//!
+//! ### Batch Searching
+//! ```rust,no_run
+//! use vibesearch::{VibeSearchClient, VibeBatchSearch};
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let client = VibeSearchClient::new_from_env();
+//!     let data = [1, 2, 3, 4, 5, 2, 3];
+//!     let elements = vec![2, 3];
+//!
+//!     let results = data.iter().vibe_find_batch(&client, elements).await;
+//!     // results[0] contains indices of '2': [1, 5]
+//!     // results[1] contains indices of '3': [2, 6]
+//! }
+//! ```
 
 #![forbid(unsafe_code, unused_must_use)]
 #![warn(clippy::all)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
+mod batch;
 mod client;
+mod config;
 mod error;
 mod vibe;
 
@@ -59,7 +95,10 @@ mod vibe;
 pub mod protocol;
 
 use openai_dive::v1::api::Client;
+use std::future::Future;
 
+pub use batch::VibeBatchSearch;
+pub use config::VibeSearchConfig;
 pub use error::Error;
 
 /// Manages the connection and interaction with the OpenAI API for VibeSearch.
@@ -81,6 +120,8 @@ pub use error::Error;
 /// ```
 pub struct VibeSearchClient {
     openai_client: Client,
+    config: VibeSearchConfig,
+    cache: Option<client::Cache>,
 }
 
 /// Provides an interface for searching for items in a collection using their
